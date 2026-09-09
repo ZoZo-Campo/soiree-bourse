@@ -1,0 +1,24 @@
+# Configuration et secrets locaux
+config.ini
+.env
+.env.*
+*.pem
+*.key
+*.p12
+
+# Données et bilans de soirée
+data/
+exports/
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.log
+
+# Environnement Python et fichiers système
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
