@@ -62,7 +62,7 @@ Un crash confirmé produit une chute (30 % par défaut), deux paliers à prix ba
 
 **Aucun test ni aucune connexion à la base Fouaille n’a été effectué lors de la réalisation de cette V1.** Le connecteur est écrit d’après le schéma présent dans Marco ; la compatibilité réelle reste à vérifier par vous avant utilisation en soirée.
 
-1. Double-cliquer **Installer_MySQL.command** pour installer le pilote PyMySQL dans un environnement propre à ce dossier. Cette installation télécharge le pilote Python ; elle ne se connecte pas à Fouaille.
+1. Double-cliquer **Lancer.command** : au premier lancement, le pilote PyMySQL est automatiquement installé dans un environnement propre à ce dossier. Cette installation télécharge le pilote Python ; elle ne se connecte pas à Fouaille.
 2. Renseigner `url` dans **config.ini**, section `[mysql]`, ou définir `BOURSE_DATABASE_URL`. Exemple de format : `mysql://utilisateur:mot_de_passe@hote:3306/base`. Encoder les caractères spéciaux du mot de passe dans l’URL. Pour TLS, renseigner `ssl_ca` avec le certificat CA. Ne pas publier ce fichier une fois les identifiants ajoutés.
 3. Dans **Catalogue**, choisir **Fouaille MySQL · prix partagés**, puis **Charger le catalogue**. Cette action lit la base mais ne modifie pas les prix.
 4. Configurer et sélectionner les boissons, puis démarrer. Une confirmation annonce explicitement l’écriture des prix partagés. Les ventes intervenues depuis l’ouverture de l’application ou le chargement du catalogue sont alors incluses.

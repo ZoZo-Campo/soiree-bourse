@@ -1,8 +1,6 @@
 #!/bin/zsh
 cd "${0:A:h}" || exit 1
-if [[ -x .venv/bin/python ]]; then
-  PYTHON=.venv/bin/python
-elif [[ -x /opt/homebrew/bin/python3 ]]; then
+if [[ -x /opt/homebrew/bin/python3 ]]; then
   PYTHON=/opt/homebrew/bin/python3
 else
   PYTHON=python3

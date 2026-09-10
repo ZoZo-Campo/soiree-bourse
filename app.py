@@ -1,28 +1,70 @@
 #!/usr/bin/env python3
 """Lancer avec Python 3.11+ et Tkinter. Aucun réseau au lancement."""
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
 
-def restart_in_project_venv():
-    """Use the project environment even when app.py is started with python3."""
+def project_python():
     candidates = (
         ROOT / '.venv' / 'bin' / 'python',
         ROOT / '.venv' / 'Scripts' / 'python.exe',
     )
     for candidate in candidates:
-        if not candidate.is_file():
-            continue
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
+
+
+def runtime_ready(interpreter):
+    if not interpreter.is_file():
+        return False
+    try:
+        result = subprocess.run(
+            [str(interpreter), '-c', 'import tkinter, pymysql'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return False
+    return result.returncode == 0
+
+
+def ensure_project_runtime():
+    """Install the local MySQL runtime once, then always use it."""
+    interpreter = project_python()
+    if not runtime_ready(interpreter):
+        installer = ROOT / 'installer.sh'
+        if not installer.is_file():
+            raise RuntimeError('Installation automatique impossible : installer.sh est absent.')
+        print('Installation automatique du pilote MySQL…', flush=True)
+        subprocess.run([str(installer), '--install-only'], cwd=ROOT, check=True)
+        interpreter = project_python()
+        if not runtime_ready(interpreter):
+            raise RuntimeError('Le pilote MySQL n’a pas pu être installé.')
+
+    try:
+        already_using_venv = Path(sys.executable).resolve() == interpreter.resolve()
+    except OSError:
+        already_using_venv = False
+    if not already_using_venv:
+        os.execv(str(interpreter), [str(interpreter), str(ROOT / 'app.py'), *sys.argv[1:]])
+
+
+def restart_in_project_venv():
+    """Backward-compatible alias used by older integrations."""
+    interpreter = project_python()
+    if interpreter.is_file():
         try:
-            already_using_venv = Path(sys.executable).resolve() == candidate.resolve()
+            already_using_venv = Path(sys.executable).resolve() == interpreter.resolve()
         except OSError:
             already_using_venv = False
         if not already_using_venv:
-            os.execv(str(candidate), [str(candidate), str(ROOT / 'app.py'), *sys.argv[1:]])
-        return
+            os.execv(str(interpreter), [str(interpreter), str(ROOT / 'app.py'), *sys.argv[1:]])
 
 
 def main():
@@ -67,5 +109,9 @@ def main():
 
 
 if __name__ == '__main__':
-    restart_in_project_venv()
+    try:
+        ensure_project_runtime()
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        print(f'Erreur : {exc}', file=sys.stderr)
+        sys.exit(1)
     sys.exit(main())

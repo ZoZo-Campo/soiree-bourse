@@ -17,7 +17,7 @@ cd soiree-bourse
 python3 app.py
 ```
 
-Si `.venv` existe, `app.py` l’utilise automatiquement, même lorsque la commande est lancée avec le Python général de l’ordinateur.
+Au premier lancement, l’application crée automatiquement `.venv` et installe le pilote MySQL s’il manque. Elle utilise ensuite cet environnement, même lorsque `app.py` est lancé avec le Python général de l’ordinateur.
 
 Vous pouvez aussi double-cliquer sur **Lancer.command**. Au premier lancement, `config.ini` est créé automatiquement à partir de `config.example.ini`. Il reste local et n’est pas suivi par Git. L’espace serveurs et l’écran public s’ouvrent automatiquement dans deux fenêtres distinctes.
 
