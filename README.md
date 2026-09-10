@@ -19,6 +19,18 @@ python3 app.py
 
 Vous pouvez aussi double-cliquer sur **Lancer.command**. Au premier lancement, `config.ini` est créé automatiquement à partir de `config.example.ini`. Il reste local et n’est pas suivi par Git. L’espace serveurs et l’écran public s’ouvrent automatiquement dans deux fenêtres distinctes.
 
+### Installation complète en ligne de commande
+
+Après avoir téléchargé ou cloné le dépôt :
+
+```bash
+cd soiree-bourse
+chmod +x installer.sh
+./installer.sh
+```
+
+Le script vérifie Python 3.11 et Tkinter, crée `.venv`, installe le pilote MySQL, crée la configuration locale sans écraser une configuration existante, exécute les tests puis lance l’application. Utiliser `./installer.sh --install-only` pour installer sans ouvrir l’application.
+
 Le mode démonstration utilise uniquement la bibliothèque standard de Python. Aucun serveur Marco ni pilote MySQL n’est nécessaire pour l’essayer.
 
 ## Tester sans toucher à Marco ou à Fouaille
