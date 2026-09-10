@@ -48,7 +48,7 @@ class MySQL:
         try:
             import pymysql
         except ImportError as exc:
-            raise RuntimeError('Pilote MySQL absent. Lancer Installer_MySQL.command.') from exc
+            raise RuntimeError('Pilote MySQL absent dans le Python actif. Fermer puis relancer avec Lancer.command.') from exc
         try:
             return pymysql.connect(**self.settings(), cursorclass=pymysql.cursors.DictCursor)
         except (ValueError, RuntimeError):

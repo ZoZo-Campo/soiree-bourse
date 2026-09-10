@@ -1,16 +1,16 @@
 #!/bin/zsh
 cd "${0:A:h}" || exit 1
-if [[ -x /opt/homebrew/bin/python3 ]]; then
-  PYTHON=/opt/homebrew/bin/python3
-else
-  PYTHON=python3
+if [[ ! -x .venv/bin/python ]] || ! .venv/bin/python -c 'import tkinter, pymysql' >/dev/null 2>&1; then
+  print 'Préparation automatique du pilote MySQL…'
+  ./installer.sh --install-only || {
+    print 'Installation impossible. Voir le message ci-dessus.'
+    read '?Appuyer sur Entrée pour fermer.'
+    exit 1
+  }
 fi
-if ! "$PYTHON" -c 'import tkinter' >/dev/null 2>&1; then
-  print 'Python avec Tkinter est nécessaire. Voir LISEZ_MOI.md.'
+if [[ ! -x .venv/bin/python ]]; then
+  print 'Environnement Python du projet introuvable.'
   read '?Appuyer sur Entrée pour fermer.'
   exit 1
 fi
-"$PYTHON" app.py
-if [[ $? -ne 0 ]]; then
-  read '?Erreur au lancement. Appuyer sur Entrée pour fermer.'
-fi
+exec .venv/bin/python app.py
