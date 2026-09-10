@@ -64,8 +64,9 @@ class Engine:
         self.s = store.get('state') or dict(session='', status='ready', mode='demo', phase='normal',
              products=[], settings=settings or dict(DEFAULTS), revenue=0, cost=0, quantity=0,
              last_tick=0, phase_step=0, crash_count=0, error='', baseline=0,
-             interrupted=False, settings_profile=2)
+             interrupted=False, settings_profile=2, adjustment=0)
         self.s.setdefault('interrupted', False)
+        self.s.setdefault('adjustment', 0)
         if self.s.get('settings_profile', 1) < 2:
             # Strengthen only untouched legacy defaults; preserve operator choices.
             if self.s['settings'].get('volatility') == 2.5:
@@ -91,7 +92,7 @@ class Engine:
             state = copy.deepcopy(pending['state'])
             state['status'] = 'recovery'
             state['error'] = self.s.get('error') or 'Une écriture doit être réconciliée. Reprendre ou restaurer les prix.'
-        state['reserve'] = state['revenue'] - state['cost'] - state['settings']['fees']
+        state['reserve'] = state['revenue'] - state['cost'] - state['settings']['fees'] + state['adjustment']
         state['history'] = self.store.recent_history(state['session']) if state['session'] else []
         state['events'] = self.store.events()
         state['can_crash'] = state['status'] == 'running' and state['phase'] == 'normal' and state['reserve'] >= state['settings']['threshold']
@@ -116,7 +117,7 @@ class Engine:
             rows = self.remote.catalog()
         baseline = self.remote.latest_order_id() if mode == 'mysql' else 0
         self.s.update(mode=mode, products=[new_product(r, i) for i, r in enumerate(rows)],
-                      status='ready', session='', revenue=0, cost=0, quantity=0, error='', phase='normal',
+                      status='ready', session='', revenue=0, cost=0, quantity=0, adjustment=0, error='', phase='normal',
                       baseline=baseline, baseline_armed=(mode == 'mysql'))
         if mode == 'demo':
             for p in self.s['products']:
@@ -144,10 +145,18 @@ class Engine:
         if self.pending():
             raise ValueError('Réconcilier les prix avant de changer les paramètres.')
         values = validate_settings(values)
-        if self.s['status'] in ('running', 'paused') and self.s['phase'] != 'normal':
-            raise ValueError('Attendre la fin du cycle crash/rebond pour changer les paramètres.')
         self.s['settings'] = values
         self.store.commit(self.s, event=(now(), 'Paramètres du marché enregistrés.'))
+
+    def set_reserve(self, value):
+        if self.pending() or self.s['status'] not in ('running', 'paused'):
+            raise ValueError('La cagnotte est modifiable uniquement pendant une soirée.')
+        if not isinstance(value, int) or not -100000000 <= value <= 100000000:
+            raise ValueError('Cagnotte attendue entre -1 000 000 € et 1 000 000 €.')
+        current = self.snapshot()['reserve']
+        base = self.s['revenue'] - self.s['cost'] - self.s['settings']['fees']
+        self.s['adjustment'] = value - base
+        self.store.commit(self.s, event=(now(), f'Cagnotte ajustée manuellement : {current / 100:.2f} € → {value / 100:.2f} €.'))
 
     def check_identity(self, state):
         if self.remote.identity() != state['remote_identity']:
@@ -208,7 +217,7 @@ class Engine:
             p.update(original=originals[p['id']], price=p['base'], previous=p['base'], sold=0, demand=0)
         target.update(session=datetime.now().strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:6],
                       status='running', phase='normal', phase_step=0, crash_count=0,
-                      revenue=0, cost=0, quantity=0, last_tick=self.clock(), error='', started_at=now(),
+                      revenue=0, cost=0, quantity=0, adjustment=0, last_tick=self.clock(), error='', started_at=now(),
                       baseline_armed=False, interrupted=False)
         self.publish(target, 'Soirée démarrée. Prix d’origine sauvegardés.', originals)
         # Include sales made since the application/catalogue was opened.
@@ -332,7 +341,7 @@ class Engine:
                 # sold drink rises even when it is the only selected product.
                 pressure = math.log1p(p['demand']) if total_demand else 0
                 noise = self.rng.uniform(-cfg['volatility'], cfg['volatility']) / 100
-                drift = .001 if target['revenue'] - target['cost'] - cfg['fees'] < cfg['threshold'] else 0
+                drift = .001 if target['revenue'] - target['cost'] - cfg['fees'] + target['adjustment'] < cfg['threshold'] else 0
                 reversion = .04 * (p['base'] - p['price'])
                 value = p['price'] * (1 + noise + pressure * cfg['demand_gain'] / 100 + drift) + reversion
             elif phase == 'crash':

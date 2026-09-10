@@ -144,6 +144,22 @@ class EngineTests(unittest.TestCase):
         self.engine.settings(dict(DEFAULTS, threshold=10000, fees=200))
         self.assertFalse(self.engine.snapshot()['can_crash'])
 
+    def test_reserve_can_be_adjusted_during_the_evening(self):
+        self.engine.start()
+        self.engine.set_reserve(12345)
+        self.assertEqual(self.engine.snapshot()['reserve'], 12345)
+        self.engine.manual_sale(1, 1)
+        self.assertGreater(self.engine.snapshot()['reserve'], 12345)
+
+    def test_settings_apply_during_crash(self):
+        self.engine.start()
+        self.engine.manual_sale(1, 100)
+        self.engine.crash()
+        changed = dict(DEFAULTS, interval=3, volatility=7, demand_gain=6)
+        self.engine.settings(changed)
+        self.assertEqual(self.engine.s['settings']['interval'], 3)
+        self.assertEqual(self.engine.s['settings']['volatility'], 7)
+
     def test_restore_fresh_original_price_and_only_selected_products(self):
         self.engine.load_catalog('mysql')
         self.engine.configure_product(1, dict(cost=100, minimum=150, base=400, maximum=800, selected=True))

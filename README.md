@@ -94,6 +94,7 @@ Le connecteur :
 - modifie uniquement `products.price` pour les boissons sélectionnées ;
 - importe au démarrage les ventes arrivées depuis l’ouverture de l’application, puis toutes les nouvelles ventes jusqu’à la fin ;
 - conserve localement le prix d’origine, permet une hausse/baisse manuelle et une restauration individuelle ou globale ;
+- permet d’ajuster la cagnotte pendant la soirée sans créer de fausse vente ; cet ajustement local est tracé dans le journal ;
 - interprète `orders.price` comme le **total négatif de la ligne** et `amount` comme la quantité ;
 - dédoublonne les ventes importées et conserve le montant réellement payé ;
 - ne modifie ni commandes, ni soldes des membres, ni stocks.

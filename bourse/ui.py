@@ -72,6 +72,8 @@ class App:
         self.root, self.path = root, Path(root_path)
         self.state, self.busy, self.quitting = None, False, False
         self.public_display = None
+        self.manual_step = tk.StringVar(value='10')
+        self.reserve_override = tk.StringVar()
         self.inbox, self.outbox = queue.Queue(), queue.Queue()
         root.title('Soirée Bourse · Espace serveurs')
         width = min(1400, root.winfo_screenwidth() - 60)
@@ -193,6 +195,16 @@ class App:
         self.canvas.bind('<Configure>', lambda _: self.draw_chart())
         self.market_tree = self.table(self.market_tab, [('name', 'Boisson', 230), ('price', 'Prix actuel', 120), ('change', 'Dernier mouvement', 150), ('base', 'Depuis le prix initial', 170), ('margin', 'Marge / verre', 140), ('sold', 'Verres vendus', 120)], height=4, use_pack=False)
         self.market_tree.master.grid(row=3, column=0, sticky='nsew')
+        manual = ttk.Frame(self.market_tab)
+        manual.grid(row=4, column=0, sticky='ew', pady=(10, 0))
+        ttk.Label(manual, text='Variation manuelle (%)').pack(side='left', padx=(0, 8))
+        ttk.Entry(manual, textvariable=self.manual_step, width=7).pack(side='left', padx=(0, 10))
+        self.market_down_button = ttk.Button(manual, text='↓ Baisser le produit', command=lambda: self.force_price(-1, self.market_tree))
+        self.market_down_button.pack(side='left', padx=(0, 8))
+        self.market_up_button = ttk.Button(manual, text='↑ Monter le produit', command=lambda: self.force_price(1, self.market_tree), style='Accent.TButton')
+        self.market_up_button.pack(side='left', padx=(0, 8))
+        self.market_restore_button = ttk.Button(manual, text='Restaurer son prix', command=lambda: self.restore_one(self.market_tree))
+        self.market_restore_button.pack(side='left')
 
     def build_sales(self):
         self.sales_help = ttk.Label(self.sale_tab, text='', wraplength=1150, style='Muted.TLabel')
@@ -222,7 +234,13 @@ class App:
         self.catalog_tree.bind('<Double-1>', lambda _: self.edit_product())
 
     def build_settings(self):
-        ttk.Label(self.settings_tab, text='La cagnotte = recettes − coût des verres vendus − frais fixes.', font=('Helvetica', 14, 'bold')).pack(anchor='w', pady=(0, 8))
+        top = ttk.Frame(self.settings_tab)
+        top.pack(fill='x', pady=(0, 8))
+        ttk.Label(top, text='La cagnotte = recettes − coût des verres vendus − frais fixes + ajustement.', font=('Helvetica', 14, 'bold')).pack(side='left')
+        self.settings_apply_button = ttk.Button(top, text='Appliquer maintenant', command=self.save_settings, style='Accent.TButton')
+        self.settings_apply_button.pack(side='right')
+        self.settings_status = ttk.Label(self.settings_tab, text='Les valeurs affichées sont appliquées.', foreground=GREEN)
+        self.settings_status.pack(anchor='w', pady=(0, 6))
         ttk.Label(self.settings_tab, text='Un mouvement de cours ne crée pas de bénéfice. Les prix minimums restent au moins égaux au coût par verre.', style='Muted.TLabel').pack(anchor='w', pady=(0, 12))
         grid = ttk.Frame(self.settings_tab)
         grid.pack(anchor='w')
@@ -232,9 +250,18 @@ class App:
             col, row = (i // 5) * 2, i % 5
             ttk.Label(grid, text=label).grid(row=row, column=col, sticky='w', padx=(0 if col == 0 else 35, 14), pady=7)
             var = tk.StringVar()
-            ttk.Entry(grid, textvariable=var, width=10).grid(row=row, column=col + 1, pady=7)
+            entry = ttk.Entry(grid, textvariable=var, width=10)
+            entry.grid(row=row, column=col + 1, pady=7)
+            entry.bind('<Return>', lambda _: self.save_settings())
+            entry.bind('<KeyRelease>', lambda _: self.settings_status.configure(text='Modifications non appliquées — cliquer sur Appliquer maintenant.', foreground='#fbbf24'))
             self.setting_vars[key] = var
-        ttk.Button(self.settings_tab, text='Enregistrer les réglages', command=self.save_settings, style='Accent.TButton').pack(anchor='w', pady=18)
+        reserve = ttk.Frame(self.settings_tab)
+        reserve.pack(anchor='w', pady=(4, 12))
+        ttk.Label(reserve, text='Nouvelle cagnotte pendant la soirée (€)').pack(side='left', padx=(0, 12))
+        ttk.Entry(reserve, textvariable=self.reserve_override, width=12).pack(side='left', padx=(0, 10))
+        self.reserve_button = ttk.Button(reserve, text='Appliquer la cagnotte', command=self.set_reserve)
+        self.reserve_button.pack(side='left')
+        ttk.Label(self.settings_tab, text='Cet ajustement est local et journalisé : il ne crée aucune vente et ne modifie aucun solde Fouaille.', style='Muted.TLabel').pack(anchor='w', pady=(0, 8))
         ttk.Label(self.settings_tab, text='Les réglages enregistrés sont conservés entre les lancements. config.ini définit les valeurs du premier lancement.\nLa pause fige les cours. En mode Fouaille, utiliser Actualiser les ventes pour importer les ventes pendant la pause.', style='Muted.TLabel', wraplength=1120).pack(anchor='w')
 
     def build_price_control(self):
@@ -244,13 +271,12 @@ class App:
         row = ttk.Frame(self.control_tab)
         row.pack(fill='x', pady=14)
         ttk.Label(row, text='Pas manuel (%)').pack(side='left', padx=(0, 8))
-        self.manual_step = tk.StringVar(value='10')
         ttk.Entry(row, textvariable=self.manual_step, width=7).pack(side='left', padx=(0, 12))
-        self.down_button = ttk.Button(row, text='↓ Forcer la baisse', command=lambda: self.force_price(-1))
+        self.down_button = ttk.Button(row, text='↓ Forcer la baisse', command=lambda: self.force_price(-1, self.control_tree))
         self.down_button.pack(side='left', padx=(0, 8))
-        self.up_button = ttk.Button(row, text='↑ Forcer la hausse', command=lambda: self.force_price(1), style='Accent.TButton')
+        self.up_button = ttk.Button(row, text='↑ Forcer la hausse', command=lambda: self.force_price(1, self.control_tree), style='Accent.TButton')
         self.up_button.pack(side='left', padx=(0, 8))
-        self.restore_one_button = ttk.Button(row, text='Restaurer ce produit', command=self.restore_one)
+        self.restore_one_button = ttk.Button(row, text='Restaurer ce produit', command=lambda: self.restore_one(self.control_tree))
         self.restore_one_button.pack(side='left')
         self.restore_all_button = ttk.Button(row, text='Restaurer tous les prix et terminer', command=self.finish, style='Danger.TButton')
         self.restore_all_button.pack(side='right')
@@ -293,6 +319,8 @@ class App:
                     messagebox.showerror('Opération arrêtée', result, parent=self.root)
                 elif result and result[0] == 'export':
                     messagebox.showinfo('Export terminé', 'Fichiers enregistrés dans :\n' + result[1] + '\n\nLes montants des CSV sont en centimes.', parent=self.root)
+                elif result and result[0] == 'settings':
+                    self.settings_status.configure(text='Réglages appliqués immédiatement.', foreground=GREEN)
                 elif result and result[0] == 'finish' and self.quitting:
                     self.call('quit')
         except queue.Empty:
@@ -311,7 +339,10 @@ class App:
                   (self.edit_button, editable), (self.sale_button, active and s['mode'] == 'demo'),
                   (self.sync_button, active and s['mode'] == 'mysql'), (self.reconcile_button, status == 'recovery'),
                   (self.down_button, active), (self.up_button, active), (self.restore_one_button, active),
-                  (self.restore_all_button, active or status == 'recovery')]
+                  (self.restore_all_button, active or status == 'recovery'),
+                  (self.market_down_button, active), (self.market_up_button, active),
+                  (self.market_restore_button, active), (self.reserve_button, active)]
+        states.append((self.settings_apply_button, status != 'recovery'))
         for button, enabled in states:
             button.configure(state='normal' if enabled and not self.busy else 'disabled')
         self.pause_button.configure(text='Reprendre' if status == 'paused' else 'Pause')
@@ -469,15 +500,15 @@ class App:
             return
         self.call('settings', values)
 
-    def selected_control_product(self):
-        selected = self.control_tree.selection()
+    def selected_price_product(self, tree):
+        selected = tree.selection()
         if not selected:
             messagebox.showinfo('Sécurité prix', 'Sélectionner un produit dans le tableau.', parent=self.root)
             return None
         return int(selected[0])
 
-    def force_price(self, direction):
-        product_id = self.selected_control_product()
+    def force_price(self, direction, tree):
+        product_id = self.selected_price_product(tree)
         if product_id is None:
             return
         try:
@@ -489,10 +520,18 @@ class App:
             return
         self.call('force_price', product_id, direction, percent)
 
-    def restore_one(self):
-        product_id = self.selected_control_product()
+    def restore_one(self, tree):
+        product_id = self.selected_price_product(tree)
         if product_id is not None and messagebox.askyesno('Restaurer ce produit', 'Rétablir maintenant son prix sauvegardé dans Fouaille ?', parent=self.root):
             self.call('restore_product', product_id)
+
+    def set_reserve(self):
+        try:
+            value = cents(self.reserve_override.get())
+        except Exception:
+            messagebox.showerror('Cagnotte', 'Saisir un montant valide en euros, par exemple 25 ou -10.', parent=self.root)
+            return
+        self.call('set_reserve', value)
 
     def interrupted_session(self):
         answer = messagebox.askyesnocancel(
