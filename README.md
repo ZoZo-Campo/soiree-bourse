@@ -17,7 +17,7 @@ cd soiree-bourse
 python3 app.py
 ```
 
-Vous pouvez aussi double-cliquer sur **Lancer.command**. Au premier lancement, `config.ini` est créé automatiquement à partir de `config.example.ini`. Il reste local et n’est pas suivi par Git.
+Vous pouvez aussi double-cliquer sur **Lancer.command**. Au premier lancement, `config.ini` est créé automatiquement à partir de `config.example.ini`. Il reste local et n’est pas suivi par Git. L’espace serveurs et l’écran public s’ouvrent automatiquement dans deux fenêtres distinctes.
 
 Le mode démonstration utilise uniquement la bibliothèque standard de Python. Aucun serveur Marco ni pilote MySQL n’est nécessaire pour l’essayer.
 
@@ -34,7 +34,7 @@ Le mode démonstration utilise uniquement la bibliothèque standard de Python. A
 
 ## Affichage pour les spectateurs
 
-Cliquer **Ouvrir l’écran public**, déplacer la fenêtre sur le projecteur ou la télévision, puis cliquer **Plein écran public** depuis la régie. La touche **Échap** quitte le plein écran.
+L’écran public s’ouvre automatiquement. Le bouton **Ouvrir l’écran public** permet de le rouvrir s’il a été fermé. Déplacer cette fenêtre sur le projecteur ou la télévision, puis cliquer **Plein écran public** depuis la régie. La touche **Échap** quitte le plein écran.
 
 Utiliser le **bureau étendu**, pas la recopie vidéo, et garder l’espace serveurs sur l’écran du personnel. L’écran public ne contient aucun bouton de gestion, aucune marge et aucune cagnotte. Les cours sont synchronisés avec la régie. Au-delà de six boissons, les pages alternent automatiquement.
 

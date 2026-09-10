@@ -4,7 +4,7 @@ Application de bureau indépendante de Marco. Au premier lancement, `config.ini`
 
 ## Démarrer sur ce Mac
 
-Double-cliquer **Lancer.command**. Python 3.11+ et Tkinter doivent être installés sur le Mac. Si macOS ouvre le fichier comme du texte, clic droit → Ouvrir avec → Terminal.
+Double-cliquer **Lancer.command**. Python 3.11+ et Tkinter doivent être installés sur le Mac. Si macOS ouvre le fichier comme du texte, clic droit → Ouvrir avec → Terminal. L’espace serveurs et l’écran public s’ouvrent automatiquement dans deux fenêtres distinctes.
 
 1. Ouvrir **Catalogue**. Double-cliquer une boisson pour choisir si elle est vendue ce soir et régler coût, prix initial, minimum et maximum.
 2. Ouvrir **Réglages** pour adapter la cagnotte de sécurité (200 € par défaut), les frais fixes et les variations.

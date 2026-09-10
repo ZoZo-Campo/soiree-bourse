@@ -332,7 +332,9 @@ class App:
         self.log_text.configure(state='disabled')
         self.buttons()
         self.draw_chart()
-        if self.public_display and not self.public_display.closed:
+        if first:
+            self.open_public()
+        elif self.public_display and not self.public_display.closed:
             self.public_display.render(public_snapshot(state))
 
     @staticmethod
