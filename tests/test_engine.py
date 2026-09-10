@@ -232,7 +232,19 @@ class EngineTests(unittest.TestCase):
         count = len(self.remote.writes)
         self.restart()
         self.assertEqual(self.engine.s['status'], 'paused')
+        self.assertTrue(self.engine.s['interrupted'])
         self.assertEqual(len(self.remote.writes), count)
+
+    def test_manual_price_controls_and_original_restore(self):
+        self.prepare_remote()
+        original = self.engine.selected()[0]['original']
+        before = self.engine.selected()[0]['price']
+        self.engine.force_price(1, 1, 10)
+        self.assertGreater(self.engine.selected()[0]['price'], before)
+        self.engine.force_price(1, -1, 10)
+        self.engine.restore_product(1)
+        self.assertEqual(self.engine.selected()[0]['price'], original)
+        self.assertEqual(self.remote.prices[1], original)
 
     def test_conflict_does_not_overwrite(self):
         self.prepare_remote()

@@ -155,13 +155,14 @@ class App:
         self.notice.pack(fill='x', pady=(0, 10))
         self.tabs = ttk.Notebook(outer)
         self.tabs.pack(fill='both', expand=True)
-        self.market_tab, self.sale_tab, self.catalog_tab, self.settings_tab, self.log_tab = [ttk.Frame(self.tabs, padding=14) for _ in range(5)]
-        for tab, title in zip((self.market_tab, self.sale_tab, self.catalog_tab, self.settings_tab, self.log_tab), ('Cours en direct', 'Ventes', 'Catalogue', 'Réglages', 'Journal & exports')):
+        self.market_tab, self.sale_tab, self.catalog_tab, self.settings_tab, self.control_tab, self.log_tab = [ttk.Frame(self.tabs, padding=14) for _ in range(6)]
+        for tab, title in zip((self.market_tab, self.sale_tab, self.catalog_tab, self.settings_tab, self.control_tab, self.log_tab), ('Cours en direct', 'Ventes', 'Catalogue', 'Réglages', 'Sécurité prix', 'Journal & exports')):
             self.tabs.add(tab, text=title)
         self.build_market()
         self.build_sales()
         self.build_catalog()
         self.build_settings()
+        self.build_price_control()
         self.build_log()
         ttk.Label(outer, text='Sauvegarde locale automatique • Le prix d’une vente reste celui réellement payé.', style='Muted.TLabel').pack(anchor='w', pady=(10, 0))
 
@@ -236,6 +237,24 @@ class App:
         ttk.Button(self.settings_tab, text='Enregistrer les réglages', command=self.save_settings, style='Accent.TButton').pack(anchor='w', pady=18)
         ttk.Label(self.settings_tab, text='Les réglages enregistrés sont conservés entre les lancements. config.ini définit les valeurs du premier lancement.\nLa pause fige les cours. En mode Fouaille, utiliser Actualiser les ventes pour importer les ventes pendant la pause.', style='Muted.TLabel', wraplength=1120).pack(anchor='w')
 
+    def build_price_control(self):
+        ttk.Label(self.control_tab, text='Sauvegarde locale et commandes de secours', font=('Helvetica', 14, 'bold')).pack(anchor='w', pady=(0, 6))
+        ttk.Label(self.control_tab, text='Le prix d’origine est lu dans Fouaille au démarrage et conservé dans data/soiree.sqlite3. Les commandes ci-dessous modifient uniquement products.price.', style='Muted.TLabel', wraplength=1120).pack(anchor='w', pady=(0, 12))
+        self.control_tree = self.table(self.control_tab, [('name', 'Produit', 300), ('original', 'Prix sauvegardé', 150), ('current', 'Prix actuel', 140), ('minimum', 'Minimum', 120), ('maximum', 'Maximum', 120)], height=6)
+        row = ttk.Frame(self.control_tab)
+        row.pack(fill='x', pady=14)
+        ttk.Label(row, text='Pas manuel (%)').pack(side='left', padx=(0, 8))
+        self.manual_step = tk.StringVar(value='10')
+        ttk.Entry(row, textvariable=self.manual_step, width=7).pack(side='left', padx=(0, 12))
+        self.down_button = ttk.Button(row, text='↓ Forcer la baisse', command=lambda: self.force_price(-1))
+        self.down_button.pack(side='left', padx=(0, 8))
+        self.up_button = ttk.Button(row, text='↑ Forcer la hausse', command=lambda: self.force_price(1), style='Accent.TButton')
+        self.up_button.pack(side='left', padx=(0, 8))
+        self.restore_one_button = ttk.Button(row, text='Restaurer ce produit', command=self.restore_one)
+        self.restore_one_button.pack(side='left')
+        self.restore_all_button = ttk.Button(row, text='Restaurer tous les prix et terminer', command=self.finish, style='Danger.TButton')
+        self.restore_all_button.pack(side='right')
+
     def build_log(self):
         row = ttk.Frame(self.log_tab)
         row.pack(fill='x', pady=(0, 10))
@@ -290,7 +309,9 @@ class App:
         states = [(self.start_button, editable), (self.pause_button, active), (self.crash_button, s['can_crash']),
                   (self.finish_button, active or status == 'recovery'), (self.load_button, editable),
                   (self.edit_button, editable), (self.sale_button, active and s['mode'] == 'demo'),
-                  (self.sync_button, active and s['mode'] == 'mysql'), (self.reconcile_button, status == 'recovery')]
+                  (self.sync_button, active and s['mode'] == 'mysql'), (self.reconcile_button, status == 'recovery'),
+                  (self.down_button, active), (self.up_button, active), (self.restore_one_button, active),
+                  (self.restore_all_button, active or status == 'recovery')]
         for button, enabled in states:
             button.configure(state='normal' if enabled and not self.busy else 'disabled')
         self.pause_button.configure(text='Reprendre' if status == 'paused' else 'Pause')
@@ -324,6 +345,7 @@ class App:
         self.fill_table(self.market_tree, chosen, lambda p: (p['name'], money(p['price']), f"{(p['price'] / p['previous'] - 1) * 100:+.1f} %" if p['previous'] else '—', f"{(p['price'] / p['base'] - 1) * 100:+.1f} %" if p['base'] else '—', money(p['price'] - p['cost']), p['sold']))
         self.fill_table(self.sale_tree, chosen, lambda p: (p['name'], money(p['price']), money(p['price'] - p['cost']), p['sold']))
         self.fill_table(self.catalog_tree, s['products'], lambda p: ('Oui' if p['selected'] else '—', p['name'], money(p['original']), money(p['cost']) if p['configured'] else 'À renseigner', money(p['base']), money(p['minimum']), money(p['maximum'])))
+        self.fill_table(self.control_tree, chosen, lambda p: (p['name'], money(p['original']), money(p['price']), money(p['minimum']), money(p['maximum'])))
         if first:
             self.mode.set('Fouaille MySQL · prix partagés' if s['mode'] == 'mysql' else 'Démonstration / caisse locale')
             for key, var in self.setting_vars.items():
@@ -336,6 +358,8 @@ class App:
         self.draw_chart()
         if first:
             self.open_public()
+            if s.get('interrupted'):
+                self.root.after(300, self.interrupted_session)
         elif self.public_display and not self.public_display.closed:
             self.public_display.render(public_snapshot(state))
 
@@ -444,6 +468,42 @@ class App:
             messagebox.showerror('Réglages invalides', str(exc), parent=self.root)
             return
         self.call('settings', values)
+
+    def selected_control_product(self):
+        selected = self.control_tree.selection()
+        if not selected:
+            messagebox.showinfo('Sécurité prix', 'Sélectionner un produit dans le tableau.', parent=self.root)
+            return None
+        return int(selected[0])
+
+    def force_price(self, direction):
+        product_id = self.selected_control_product()
+        if product_id is None:
+            return
+        try:
+            percent = float(self.manual_step.get().replace(',', '.'))
+            if not 1 <= percent <= 100:
+                raise ValueError()
+        except ValueError:
+            messagebox.showerror('Variation manuelle', 'Saisir un pourcentage entre 1 et 100.', parent=self.root)
+            return
+        self.call('force_price', product_id, direction, percent)
+
+    def restore_one(self):
+        product_id = self.selected_control_product()
+        if product_id is not None and messagebox.askyesno('Restaurer ce produit', 'Rétablir maintenant son prix sauvegardé dans Fouaille ?', parent=self.root):
+            self.call('restore_product', product_id)
+
+    def interrupted_session(self):
+        answer = messagebox.askyesnocancel(
+            'Soirée interrompue retrouvée',
+            'Les données locales et les prix d’origine ont été retrouvés.\n\nOui : continuer la soirée et conserver les compteurs.\nNon : restaurer tous les prix et terminer ; le prochain démarrage repartira de zéro.\nAnnuler : rester en pause.',
+            parent=self.root,
+        )
+        if answer is True:
+            self.call('pause')
+        elif answer is False:
+            self.call('finish')
 
     def start(self):
         if self.state['mode'] == 'mysql':

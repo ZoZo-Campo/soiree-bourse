@@ -9,8 +9,8 @@ from datetime import datetime
 from .database import cents, read_config
 
 COLORS = ['#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#a78bfa', '#fb923c', '#22d3ee', '#e879f9']
-DEFAULTS = dict(threshold=20000, fees=0, interval=10.0, volatility=2.5,
-                demand_gain=2.0, crash_drop=30.0, rebound=20.0,
+DEFAULTS = dict(threshold=20000, fees=0, interval=10.0, volatility=5.0,
+                demand_gain=4.0, crash_drop=30.0, rebound=20.0,
                 low_ticks=2, rebound_ticks=5, recovery_ticks=8)
 CONFIG_KEYS = dict(threshold='seuil_cagnotte', fees='frais_fixes', interval='intervalle_secondes',
                    volatility='variation_aleatoire_pct', demand_gain='influence_ventes_pct',
@@ -53,7 +53,7 @@ def configured_settings(path):
 def new_product(row, index):
     price = row['price']
     return dict(id=row['id'], name=row['name'], original=price, base=price, price=price,
-                previous=price, cost=0, minimum=max(1, round(price * .5)), maximum=max(1, price * 2),
+                previous=price, cost=0, minimum=max(1, round(price * .5)), maximum=max(1, price * 3),
                 selected=False, configured=False, color=COLORS[index % len(COLORS)], sold=0, demand=0)
 
 
@@ -63,10 +63,22 @@ class Engine:
         self.rng, self.clock = rng or random.Random(), clock
         self.s = store.get('state') or dict(session='', status='ready', mode='demo', phase='normal',
              products=[], settings=settings or dict(DEFAULTS), revenue=0, cost=0, quantity=0,
-             last_tick=0, phase_step=0, crash_count=0, error='', baseline=0)
+             last_tick=0, phase_step=0, crash_count=0, error='', baseline=0,
+             interrupted=False, settings_profile=2)
+        self.s.setdefault('interrupted', False)
+        if self.s.get('settings_profile', 1) < 2:
+            # Strengthen only untouched legacy defaults; preserve operator choices.
+            if self.s['settings'].get('volatility') == 2.5:
+                self.s['settings']['volatility'] = 5.0
+            if self.s['settings'].get('demand_gain') == 2.0:
+                self.s['settings']['demand_gain'] = 4.0
+            for product in self.s.get('products', []):
+                if product.get('maximum') == product.get('base', 0) * 2:
+                    product['maximum'] = product['base'] * 3
+            self.s['settings_profile'] = 2
         # Une relance ne modifie jamais la DB automatiquement.
         if self.s['status'] == 'running':
-            self.s['status'] = 'paused'
+            self.s.update(status='paused', interrupted=True)
             self.store.commit(self.s, event=(now(), 'Application relancée : marché en pause.'))
 
     def pending(self):
@@ -197,7 +209,7 @@ class Engine:
         target.update(session=datetime.now().strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:6],
                       status='running', phase='normal', phase_step=0, crash_count=0,
                       revenue=0, cost=0, quantity=0, last_tick=self.clock(), error='', started_at=now(),
-                      baseline_armed=False)
+                      baseline_armed=False, interrupted=False)
         self.publish(target, 'Soirée démarrée. Prix d’origine sauvegardés.', originals)
         # Include sales made since the application/catalogue was opened.
         self.sync_sales()
@@ -248,10 +260,10 @@ class Engine:
         if self.pending():
             raise ValueError('Réconcilier l’écriture en attente.')
         if self.s['status'] == 'running':
-            self.s.update(status='paused', error='')
+            self.s.update(status='paused', error='', interrupted=False)
         elif self.s['status'] == 'paused':
             self.sync_sales()
-            self.s.update(status='running', last_tick=self.clock(), error='')
+            self.s.update(status='running', last_tick=self.clock(), error='', interrupted=False)
         else:
             raise ValueError('Aucune soirée à mettre en pause ou reprendre.')
         self.store.commit(self.s, event=(now(), 'Marché ' + ('en pause.' if self.s['status'] == 'paused' else 'repris.')))
@@ -259,6 +271,35 @@ class Engine:
     @staticmethod
     def bounded(p, price):
         return max(p['minimum'], min(p['maximum'], int(round(price))))
+
+    def force_price(self, product_id, direction, percent):
+        if self.pending() or self.s['status'] not in ('running', 'paused'):
+            raise ValueError('Démarrer une soirée avant de forcer un cours.')
+        if self.s['phase'] != 'normal':
+            raise ValueError('Attendre la fin du cycle crash/rebond avant de forcer un cours.')
+        if direction not in (-1, 1) or not 1 <= percent <= 100:
+            raise ValueError('Variation manuelle attendue entre 1 % et 100 %.')
+        self.sync_sales()
+        target = copy.deepcopy(self.s)
+        p = next((p for p in self.selected(target) if p['id'] == product_id), None)
+        if not p:
+            raise ValueError('Boisson non sélectionnée.')
+        p['previous'] = p['price']
+        p['price'] = self.bounded(p, p['price'] * (1 + direction * percent / 100))
+        target['last_tick'] = self.clock()
+        self.publish(target, f"Cours forcé {'à la hausse' if direction > 0 else 'à la baisse'} : {p['name']}.")
+
+    def restore_product(self, product_id):
+        if self.pending() or self.s['status'] not in ('running', 'paused'):
+            raise ValueError('Aucune soirée active à restaurer.')
+        self.sync_sales()
+        target = copy.deepcopy(self.s)
+        p = next((p for p in self.selected(target) if p['id'] == product_id), None)
+        if not p:
+            raise ValueError('Boisson non sélectionnée.')
+        p.update(previous=p['price'], price=p['original'], demand=0)
+        target['last_tick'] = self.clock()
+        self.publish(target, f'Prix d’origine restauré manuellement : {p["name"]}.')
 
     def crash(self):
         if self.pending() or self.s['status'] != 'running' or self.s['phase'] != 'normal':
@@ -335,7 +376,7 @@ class Engine:
         target = copy.deepcopy(self.s)
         for p in self.selected(target):
             p.update(previous=p['price'], price=p['original'])
-        target.update(status='closed', phase='closed', error=warning, ended_at=now())
+        target.update(status='closed', phase='closed', error=warning, ended_at=now(), interrupted=False)
         self.publish(target, warning or 'Fin de soirée : tous les prix sélectionnés ont été restaurés.')
 
     def export(self, folder):

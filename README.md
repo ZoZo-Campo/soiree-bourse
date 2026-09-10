@@ -93,6 +93,7 @@ Le connecteur :
 - lit `products` et les nouvelles ventes dans `orders` ;
 - modifie uniquement `products.price` pour les boissons sélectionnées ;
 - importe au démarrage les ventes arrivées depuis l’ouverture de l’application, puis toutes les nouvelles ventes jusqu’à la fin ;
+- conserve localement le prix d’origine, permet une hausse/baisse manuelle et une restauration individuelle ou globale ;
 - interprète `orders.price` comme le **total négatif de la ligne** et `amount` comme la quantité ;
 - dédoublonne les ventes importées et conserve le montant réellement payé ;
 - ne modifie ni commandes, ni soldes des membres, ni stocks.
@@ -104,6 +105,10 @@ En mode Fouaille, les ventes sont effectuées dans la caisse habituelle ; la sai
 Avant la première écriture, les prix d’origine sont sauvegardés localement. **Fin de soirée : restaurer les prix** arrête les variations et rétablit ces tarifs.
 
 Une écriture non confirmée arrête le marché. Le journal local permet de **réconcilier l’écriture en attente** après rétablissement de la connexion. Après une relance, la soirée reste en pause, sans connexion automatique. En cas de modification concurrente d’un tarif, l’application signale un conflit au lieu de forcer l’écrasement.
+
+Après une fermeture inattendue, l’application propose soit de continuer avec les compteurs locaux, soit de restaurer tous les prix et de terminer. Le prochain démarrage repart alors avec des compteurs à zéro.
+
+Le profil dynamique utilise par défaut 5 % d’aléatoire et 4 % d’influence des ventes. Le maximum proposé lors du chargement d’un produit est trois fois son prix catalogue et reste librement configurable.
 
 La restauration requiert une base accessible. Conserver le dossier `data/` jusqu’à la clôture et ne faire fonctionner qu’une régie de prix à la fois. Arrêter les ventes en caisse pendant le démarrage et la clôture pour délimiter correctement la soirée.
 
