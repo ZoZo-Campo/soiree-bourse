@@ -7,6 +7,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 
 
+def restart_in_project_venv():
+    """Use the project environment even when app.py is started with python3."""
+    candidates = (
+        ROOT / '.venv' / 'bin' / 'python',
+        ROOT / '.venv' / 'Scripts' / 'python.exe',
+    )
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        try:
+            already_using_venv = Path(sys.executable).resolve() == candidate.resolve()
+        except OSError:
+            already_using_venv = False
+        if not already_using_venv:
+            os.execv(str(candidate), [str(candidate), str(ROOT / 'app.py'), *sys.argv[1:]])
+        return
+
+
 def main():
     import tkinter as tk
     from tkinter import messagebox
@@ -49,4 +67,5 @@ def main():
 
 
 if __name__ == '__main__':
+    restart_in_project_venv()
     sys.exit(main())
