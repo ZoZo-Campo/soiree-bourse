@@ -38,6 +38,8 @@ class Worker(threading.Thread):
             engine = Engine(store, MySQL(self.root_path / 'config.ini'), configured_settings(self.root_path / 'config.ini'))
             if not engine.s['products'] and not engine.pending():
                 engine.load_catalog('demo')
+            elif not engine.pending():
+                engine.arm_sales_boundary()
             self.outbox.put(('state', engine.snapshot(), None))
             while True:
                 try:

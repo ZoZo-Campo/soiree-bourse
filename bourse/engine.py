@@ -102,12 +102,22 @@ class Engine:
                 ('Cocktail maison', 550), ('Soda', 200), ('Jus de fruits', 250)])]
         else:
             rows = self.remote.catalog()
+        baseline = self.remote.latest_order_id() if mode == 'mysql' else 0
         self.s.update(mode=mode, products=[new_product(r, i) for i, r in enumerate(rows)],
-                      status='ready', session='', revenue=0, cost=0, quantity=0, error='', phase='normal')
+                      status='ready', session='', revenue=0, cost=0, quantity=0, error='', phase='normal',
+                      baseline=baseline, baseline_armed=(mode == 'mysql'))
         if mode == 'demo':
             for p in self.s['products']:
                 p.update(cost=round(p['base'] * .35), selected=True, configured=True)
         self.store.commit(self.s, event=(now(), f'Catalogue chargé : {len(rows)} boissons ({mode}).'))
+
+    def arm_sales_boundary(self):
+        """Start counting at application launch, before the operator configures prices."""
+        if self.s['mode'] != 'mysql' or self.s['status'] not in ('ready', 'closed'):
+            return
+        self.s['baseline'] = self.remote.latest_order_id()
+        self.s['baseline_armed'] = True
+        self.store.commit(self.s, event=(now(), 'Repère de début enregistré : les prochaines ventes seront comptées.'))
 
     def configure_product(self, product_id, values):
         self.require_editable()
@@ -179,13 +189,18 @@ class Engine:
         originals = {p['id']: p['original'] for p in products}
         if target['mode'] == 'mysql':
             target['remote_identity'] = self.remote.identity()
-            originals, target['baseline'] = self.remote.snapshot(list(originals))
+            originals, current_baseline = self.remote.snapshot(list(originals))
+            if not target.get('baseline_armed'):
+                target['baseline'] = current_baseline
         for p in self.selected(target):
             p.update(original=originals[p['id']], price=p['base'], previous=p['base'], sold=0, demand=0)
         target.update(session=datetime.now().strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:6],
                       status='running', phase='normal', phase_step=0, crash_count=0,
-                      revenue=0, cost=0, quantity=0, last_tick=self.clock(), error='', started_at=now())
+                      revenue=0, cost=0, quantity=0, last_tick=self.clock(), error='', started_at=now(),
+                      baseline_armed=False)
         self.publish(target, 'Soirée démarrée. Prix d’origine sauvegardés.', originals)
+        # Include sales made since the application/catalogue was opened.
+        self.sync_sales()
 
     def manual_sale(self, product_id, quantity):
         if self.s['mode'] != 'demo':
@@ -272,7 +287,9 @@ class Engine:
         for p in products:
             p['previous'] = p['price']
             if phase == 'normal':
-                pressure = ((p['demand'] / total_demand - 1 / len(products)) if total_demand else 0)
+                # log1p keeps large batches controlled while ensuring that a
+                # sold drink rises even when it is the only selected product.
+                pressure = math.log1p(p['demand']) if total_demand else 0
                 noise = self.rng.uniform(-cfg['volatility'], cfg['volatility']) / 100
                 drift = .001 if target['revenue'] - target['cost'] - cfg['fees'] < cfg['threshold'] else 0
                 reversion = .04 * (p['base'] - p['price'])

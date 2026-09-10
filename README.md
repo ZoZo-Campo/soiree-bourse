@@ -86,12 +86,13 @@ ssl_ca =
 
 Encoder les caractères spéciaux du mot de passe dans l’URL. Pour TLS, renseigner le chemin du certificat CA dans `ssl_ca`. **Ne jamais publier `config.ini`, une URL contenant des identifiants, ni les fichiers de données ou d’export.**
 
-Dans **Catalogue**, choisir **Fouaille MySQL · prix partagés** pour lire les boissons. Les prix ne sont appliqués qu’au démarrage de la soirée, après confirmation explicite.
+Dans **Catalogue**, choisir **Fouaille MySQL · prix partagés** pour lire les boissons. Le repère des ventes est mémorisé dès l’ouverture de l’application ou du catalogue. Les prix ne sont appliqués qu’au démarrage de la soirée, après confirmation explicite.
 
 Le connecteur :
 
 - lit `products` et les nouvelles ventes dans `orders` ;
 - modifie uniquement `products.price` pour les boissons sélectionnées ;
+- importe au démarrage les ventes arrivées depuis l’ouverture de l’application, puis toutes les nouvelles ventes jusqu’à la fin ;
 - interprète `orders.price` comme le **total négatif de la ligne** et `amount` comme la quantité ;
 - dédoublonne les ventes importées et conserve le montant réellement payé ;
 - ne modifie ni commandes, ni soldes des membres, ni stocks.

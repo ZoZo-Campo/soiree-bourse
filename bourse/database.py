@@ -63,6 +63,13 @@ class MySQL:
                 c.execute('SELECT id, name, price FROM products WHERE available=1 ORDER BY name')
                 return [dict(id=int(r['id']), name=r['name'], price=cents(r['price'])) for r in c.fetchall()]
 
+    def latest_order_id(self):
+        """Return the current sales boundary without changing Fouaille."""
+        with self.connect() as db:
+            with db.cursor() as c:
+                c.execute('SELECT MAX(id) AS n FROM orders')
+                return int(c.fetchone()['n'] or 0)
+
     def snapshot(self, ids):
         with self.connect() as db:
             with db.cursor() as c:

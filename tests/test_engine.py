@@ -21,6 +21,8 @@ class FakeRemote:
         return self.key
     def catalog(self):
         return [dict(id=i, name=f'Fictive {i}', price=p) for i, p in self.prices.items()]
+    def latest_order_id(self):
+        return max([100, *(int(row['id']) for row in self.rows)])
     def snapshot(self, ids):
         return {i: self.prices[i] for i in ids}, 100
     def sales(self, baseline, ids):
@@ -168,6 +170,27 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(self.engine.s['quantity'], 4)
         with self.assertRaises(ValueError):
             self.engine.manual_sale(1, 1)
+
+    def test_sales_since_catalogue_load_are_imported_when_starting(self):
+        self.engine.load_catalog('mysql')
+        self.engine.configure_product(1, dict(cost=100, minimum=150, base=400, maximum=800, selected=True))
+        self.remote.rows.append(dict(id='101', product_id=1, quantity=3, total=-1050, at='fictive'))
+        self.engine.start()
+        self.assertEqual(self.engine.s['quantity'], 3)
+        self.assertEqual(self.engine.s['revenue'], 1050)
+
+    def test_one_selected_drink_rises_with_sales(self):
+        self.engine.settings(dict(DEFAULTS, volatility=0, demand_gain=2))
+        for product in self.engine.s['products']:
+            self.engine.configure_product(product['id'], dict(
+                cost=100, minimum=150, base=400, maximum=800,
+                selected=product['id'] == 1,
+            ))
+        self.engine.start()
+        before = self.engine.selected()[0]['price']
+        self.engine.manual_sale(1, 19)
+        self.engine.tick()
+        self.assertGreater(self.engine.selected()[0]['price'], before)
 
     def test_uncertain_commit_recovery_after_restart(self):
         self.prepare_remote()
